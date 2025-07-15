@@ -281,14 +281,14 @@
         </div>
 
         <div class="tabs">
-            <button class="tab active" onclick="showTab('car')">פרטי רכב</button>
-            <button class="tab" onclick="showTab('add')">תדלוק חדש</button>
+            <button class="tab active" onclick="showTab('add')">תדלוק חדש</button>
             <button class="tab" onclick="showTab('history')">היסטוריה</button>
             <button class="tab" onclick="showTab('stats')">סטטיסטיקות</button>
+            <button class="tab" onclick="showTab('car')">פרטי רכב</button>
         </div>
 
         <!-- פרטי רכב -->
-        <div id="car-tab" class="tab-content active">
+        <div id="car-tab" class="tab-content">
             <div class="card">
                 <h2>🚗 פרטי הרכב</h2>
                 
@@ -321,7 +321,7 @@
         </div>
 
         <!-- הוספת תדלוק -->
-        <div id="add-tab" class="tab-content">
+        <div id="add-tab" class="tab-content active">
             <div class="card">
                 <h2>🚗 תדלוק חדש</h2>
                 <div id="success-message" class="success-message" style="display: none;"></div>
@@ -421,9 +421,26 @@
                         <div class="stat-label">מחיר ממוצע לליטר</div>
                     </div>
                     <div class="stat-item">
+                        <div class="stat-number" id="cost-per-km">₪0</div>
+                        <div class="stat-label">מחיר ממוצע לק"מ</div>
+                    </div>
+                </div>
+                
+                <div class="stats" style="margin-top: 20px;">
+                    <div class="stat-item">
                         <div class="stat-number" id="last-fueling-date">-</div>
                         <div class="stat-label">תדלוק אחרון</div>
                     </div>
+                    <div class="stat-item">
+                        <div class="stat-number" id="total-distance">0</div>
+                        <div class="stat-label">סה"כ ק"מ</div>
+                    </div>
+                </div>
+
+                <!-- סטטיסטיקות חודשיות -->
+                <div id="monthly-stats" style="margin-top: 30px; display: none;">
+                    <h3 style="margin-bottom: 15px; color: #667eea;">📅 סטטיסטיקות חודשיות</h3>
+                    <div id="monthly-breakdown"></div>
                 </div>
             </div>
         </div>
@@ -580,203 +597,8 @@
             }
         }
 
-        function processImage(file, type) {
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const resultsDiv = document.getElementById('ocr-results');
-                resultsDiv.style.display = 'block';
-                
-                // הצגת התמונה
-                resultsDiv.innerHTML = `
-                    <h4>📸 מעבד תמונה...</h4>
-                    <img src="${e.target.result}" class="camera-preview" style="max-height: 200px;">
-                    <p>🔍 מזהה נתונים עם Google Vision API...</p>
-                `;
-                
-                // שליחה ל-Google Vision API דרך שירות חיצוני
-                const base64Image = e.target.result.split(',')[1];
-                
-                fetch('https://api.ocr.space/parse/image', {
-                    method: 'POST',
-                    headers: {
-                        'apikey': 'K87899142388957'  // API key חינמי לדוגמה
-                    },
-                    body: JSON.stringify({
-                        base64Image: 'data:image/jpeg;base64,' + base64Image,
-                        language: 'eng',
-                        isOverlayRequired: false,
-                        detectOrientation: true,
-                        scale: true,
-                        OCREngine: 2
-                    })
-                })
-                .then(response => response.json())
-                .then(result => {
-                    if (result.ParsedResults && result.ParsedResults[0]) {
-                        const text = result.ParsedResults[0].ParsedText;
-                        console.log('טקסט שזוהה:', text);
-                        
-                        if (type === 'kilometers') {
-                            processKmText(text);
-                        } else if (type === 'pump') {
-                            processPumpText(text);
-                        }
-                    } else {
-                        showOCRError(resultsDiv);
-                    }
-                })
-                .catch(err => {
-                    console.error('שגיאה בזיהוי OCR:', err);
-                    // fallback לזיהוי מקומי פשוט
-                    fallbackOCR(e.target.result, type, resultsDiv);
-                });
-            };
-            reader.readAsDataURL(file);
-        }
-
-        // fallback OCR פשוט אם השירות החיצוני לא עובד
-        function fallbackOCR(imageSrc, type, resultsDiv) {
-            resultsDiv.innerHTML += `
-                <div style="background: #fff3cd; padding: 10px; border-radius: 5px; margin-top: 10px;">
-                    ⚠️ בעיה בשירות זיהוי התמונה<br>
-                    <small>אנא הזן את הנתונים ידנית או נסה שוב</small><br><br>
-                    <button onclick="manualInput('${type}')" class="btn btn-secondary" style="width: auto; padding: 10px 20px;">
-                        ✏️ הזנה ידנית
-                    </button>
-                </div>
-            `;
-        }
-
-        function manualInput(type) {
-            if (type === 'kilometers') {
-                const km = prompt('הזן מספר קילומטר:');
-                if (km && !isNaN(km)) {
-                    document.getElementById('km').value = km;
-                    updateCalculations();
-                }
-            } else if (type === 'pump') {
-                const liters = prompt('הזן כמות ליטרים:');
-                const price = prompt('הזן מחיר כולל:');
-                if (liters && price && !isNaN(liters) && !isNaN(price)) {
-                    document.getElementById('liters').value = liters;
-                    document.getElementById('price').value = price;
-                    updateCalculations();
-                }
-            }
-        }
-
-        function showOCRError(resultsDiv) {
-            resultsDiv.innerHTML += `
-                <div style="background: #f8d7da; padding: 10px; border-radius: 5px; margin-top: 10px;">
-                    ❌ לא הצלחתי לזהות טקסט בתמונה<br>
-                    <small>ודא שהתמונה ברורה והמספרים גדולים וקריאים</small>
-                </div>
-            `;
-        }
-
-        function processKmText(text) {
-            // חיפוש מספרי ק"מ - בדרך כלל 5-6 ספרות
-            const kmPatterns = [
-                /(\d{4,6})/g,  // 4-6 ספרות
-                /(\d+\.?\d*)\s*km/gi,  // מספר עם km
-                /(\d+\.?\d*)\s*קמ/g   // מספר עם קמ
-            ];
-            
-            let foundKm = null;
-            
-            for (let pattern of kmPatterns) {
-                const matches = text.match(pattern);
-                if (matches) {
-                    for (let match of matches) {
-                        const num = parseFloat(match.replace(/[^\d\.]/g, ''));
-                        // בדיקה שהמספר הגיוני לק"מ (בין 1000 ל-999999)
-                        if (num >= 1000 && num <= 999999) {
-                            foundKm = Math.floor(num);  // ק"מ תמיד מספר שלם
-                            break;
-                        }
-                    }
-                    if (foundKm) break;
-                }
-            }
-            
-            const resultsDiv = document.getElementById('ocr-results');
-            
-            if (foundKm) {
-                document.getElementById('km').value = foundKm;
-                resultsDiv.innerHTML += `
-                    <div style="background: #d4edda; padding: 10px; border-radius: 5px; margin-top: 10px;">
-                        ✅ זוהה קילומטר: ${foundKm.toLocaleString()}
-                        <br><small>הנתון הוכנס אוטומטי לשדה הק"מ</small>
-                    </div>
-                `;
-                updateCalculations();
-            } else {
-                resultsDiv.innerHTML += `
-                    <div style="background: #fff3cd; padding: 10px; border-radius: 5px; margin-top: 10px;">
-                        ⚠️ לא זוהה מספר ק"מ תקין
-                        <br><small>טקסט שזוהה: "${text.substring(0, 100)}..."</small>
-                        <br><small>אנא הזן את הק"מ ידנית</small>
-                    </div>
-                `;
-            }
-        }
-
-        function processPumpText(text) {
-            // חיפוש מספרים בטקסט - בדרך כלל יש 2 מספרים עיקריים במשאבה
-            const numbers = [];
-            const numberPattern = /(\d+\.?\d*)/g;
-            let match;
-            
-            while ((match = numberPattern.exec(text)) !== null) {
-                const num = parseFloat(match[1]);
-                // מספרים רלוונטיים לתדלוק
-                if (num > 0.1 && num < 10000) {
-                    numbers.push(num);
-                }
-            }
-            
-            // מיון המספרים
-            numbers.sort((a, b) => b - a);
-            
-            const resultsDiv = document.getElementById('ocr-results');
-            
-            if (numbers.length >= 2) {
-                const price = numbers[0];    // המספר הגבוה יותר = מחיר
-                const liters = numbers[1];   // המספר הנמוך יותר = ליטרים
-                
-                // בדיקת הגיון
-                if (price > liters && liters > 5 && liters < 200 && price > 50 && price < 2000) {
-                    document.getElementById('liters').value = liters.toFixed(2);
-                    document.getElementById('price').value = price.toFixed(2);
-                    
-                    resultsDiv.innerHTML += `
-                        <div style="background: #d4edda; padding: 10px; border-radius: 5px; margin-top: 10px;">
-                            ✅ זוהה מסך משאבת דלק:<br>
-                            • סה"כ ליטרים: ${liters.toFixed(2)}<br>
-                            • סה"כ תשלום: ₪${price.toFixed(2)}<br>
-                            <small>המספר הגבוה = מחיר, המספר הנמוך = ליטרים</small>
-                        </div>
-                    `;
-                    updateCalculations();
-                } else {
-                    showPumpError(numbers, text, resultsDiv);
-                }
-            } else {
-                showPumpError(numbers, text, resultsDiv);
-            }
-        }
-
-        function showPumpError(numbers, text, resultsDiv) {
-            resultsDiv.innerHTML += `
-                <div style="background: #fff3cd; padding: 10px; border-radius: 5px; margin-top: 10px;">
-                    ⚠️ לא זוהו נתוני תדלוק תקינים<br>
-                    <small>מספרים שנמצאו: ${numbers.join(', ')}</small><br>
-                    <small>טקסט: "${text.substring(0, 100)}..."</small><br>
-                    <small>אנא הזן את הנתונים ידנית</small>
-                </div>
-            `;
-        }
-
+        // הסרת הפונקציות שלא בשימוש
+        
         function updateCalculations() {
             const km = parseFloat(document.getElementById('km').value) || 0;
             const liters = parseFloat(document.getElementById('liters').value) || 0;
@@ -916,10 +738,12 @@
             const totalFuelings = fuelingData.length;
             const totalLiters = fuelingData.reduce((sum, f) => sum + f.liters, 0);
             const totalCost = fuelingData.reduce((sum, f) => sum + f.price, 0);
+            const totalDistance = fuelingData.reduce((sum, f) => sum + f.distance, 0);
             
             document.getElementById('total-fuelings').textContent = totalFuelings;
             document.getElementById('total-liters').textContent = totalLiters.toFixed(1);
             document.getElementById('total-cost').textContent = `₪${totalCost.toFixed(0)}`;
+            document.getElementById('total-distance').textContent = `${totalDistance.toLocaleString()} ק"מ`;
             
             const fuelingsWithDistance = fuelingData.filter(f => f.distance > 0);
             if (fuelingsWithDistance.length > 0) {
@@ -934,11 +758,85 @@
                 document.getElementById('avg-price-per-liter').textContent = `₪${avgPricePerLiter.toFixed(2)}`;
             }
 
+            // מחיר ממוצע לק"מ
+            if (totalDistance > 0) {
+                const costPerKm = totalCost / totalDistance;
+                document.getElementById('cost-per-km').textContent = `₪${costPerKm.toFixed(3)}`;
+            } else {
+                document.getElementById('cost-per-km').textContent = '₪0';
+            }
+
             if (fuelingData.length > 0) {
                 const lastFueling = fuelingData[fuelingData.length - 1];
                 const lastDate = new Date(lastFueling.date).toLocaleDateString('he-IL');
                 document.getElementById('last-fueling-date').textContent = lastDate;
             }
+
+            // סטטיסטיקות חודשיות
+            updateMonthlyStats();
+        }
+
+        function updateMonthlyStats() {
+            if (fuelingData.length < 3) {
+                document.getElementById('monthly-stats').style.display = 'none';
+                return;
+            }
+
+            // קיבוץ לפי חודשים
+            const monthlyData = {};
+            
+            fuelingData.forEach(fueling => {
+                const date = new Date(fueling.date);
+                const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                const monthName = date.toLocaleDateString('he-IL', { year: 'numeric', month: 'long' });
+                
+                if (!monthlyData[monthKey]) {
+                    monthlyData[monthKey] = {
+                        monthName: monthName,
+                        fuelings: 0,
+                        totalCost: 0,
+                        totalLiters: 0,
+                        totalDistance: 0,
+                        avgPricePerLiter: 0
+                    };
+                }
+                
+                monthlyData[monthKey].fuelings++;
+                monthlyData[monthKey].totalCost += fueling.price;
+                monthlyData[monthKey].totalLiters += fueling.liters;
+                monthlyData[monthKey].totalDistance += fueling.distance;
+            });
+
+            // חישוב ממוצעים
+            Object.keys(monthlyData).forEach(key => {
+                const month = monthlyData[key];
+                month.avgPricePerLiter = month.totalCost / month.totalLiters;
+                month.costPerKm = month.totalDistance > 0 ? month.totalCost / month.totalDistance : 0;
+            });
+
+            // הצגה
+            let html = '';
+            const sortedMonths = Object.keys(monthlyData).sort().reverse();
+            
+            sortedMonths.forEach(key => {
+                const month = monthlyData[key];
+                html += `
+                    <div style="background: #f8f9fa; padding: 15px; margin-bottom: 15px; border-radius: 10px; border-right: 4px solid #667eea;">
+                        <h4 style="margin-bottom: 10px; color: #667eea;">${month.monthName}</h4>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.9em;">
+                            <div><strong>תדלוקים:</strong> ${month.fuelings}</div>
+                            <div><strong>עלות:</strong> ₪${month.totalCost.toFixed(0)}</div>
+                            <div><strong>ליטרים:</strong> ${month.totalLiters.toFixed(1)}</div>
+                            <div><strong>ק"מ:</strong> ${month.totalDistance.toLocaleString()}</div>
+                            <div><strong>₪/ליטר:</strong> ₪${month.avgPricePerLiter.toFixed(2)}</div>
+                            <div><strong>₪/ק"מ:</strong> ₪${month.costPerKm.toFixed(3)}</div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            document.getElementById('monthly-breakdown').innerHTML = html;
+            document.getElementById('monthly-stats').style.display = 'block';
         }
 
         function showTab(tabName) {
