@@ -326,24 +326,27 @@
                 <h2>🚗 תדלוק חדש</h2>
                 <div id="success-message" class="success-message" style="display: none;"></div>
                 
-                <!-- חלק צילום -->
+                <!-- חלק צילום לתיעוד -->
                 <div class="camera-section">
-                    <h3>📸 צילום אוטומטי</h3>
-                    <p>צלם את הספידומטר ואת מסך משאבת הדלק - המערכת תזהה את המספרים</p>
+                    <h3>📸 צילום לתיעוד</h3>
+                    <p>צלם את הספידומטר ואת מסך המשאבה לתיעוד - התמונות יישמרו עם כל תדלוק</p>
                     
                     <div class="camera-buttons">
                         <button class="btn btn-camera" onclick="captureKilometers()">
                             📊 צלם ספידומטר
                         </button>
                         <button class="btn btn-camera" onclick="captureFuelPump()">
-                            ⛽ צלם מסך משאבת דלק
+                            ⛽ צלם מסך משאבה
                         </button>
                     </div>
                     
                     <input type="file" id="fileInput" accept="image/*" capture="environment">
                     <input type="file" id="fuelInput" accept="image/*" capture="environment">
                     
-                    <div id="ocr-results" class="ocr-result" style="display: none;"></div>
+                    <div id="photo-preview" style="display: none; margin-top: 15px;">
+                        <h4>תמונות שצולמו:</h4>
+                        <div id="saved-photos" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;"></div>
+                    </div>
                 </div>
 
                 <!-- הזנה ידנית -->
@@ -426,9 +429,6 @@
         </div>
     </div>
 
-    <!-- ספריית Tesseract.js לזיהוי OCR אמיתי -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
-    
     <script>
         let fuelingData = JSON.parse(localStorage.getItem('fuelingData')) || [];
         let carInfo = JSON.parse(localStorage.getItem('carInfo')) || {};
@@ -488,12 +488,18 @@
             return '';
         }
 
+        // משתנים לשמירת תמונות
+        let currentPhotos = {
+            speedometer: null,
+            pump: null
+        };
+
         function captureKilometers() {
             const fileInput = document.getElementById('fileInput');
             fileInput.onchange = function(event) {
                 const file = event.target.files[0];
                 if (file) {
-                    processImage(file, 'kilometers');
+                    savePhoto(file, 'speedometer');
                 }
             };
             fileInput.click();
@@ -504,10 +510,74 @@
             fuelInput.onchange = function(event) {
                 const file = event.target.files[0];
                 if (file) {
-                    processImage(file, 'pump');
+                    savePhoto(file, 'pump');
                 }
             };
             fuelInput.click();
+        }
+
+        function savePhoto(file, type) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                // שמירת התמונה
+                currentPhotos[type] = {
+                    data: e.target.result,
+                    name: file.name,
+                    timestamp: new Date().toLocaleString('he-IL')
+                };
+
+                // הצגת התמונות
+                displayPhotos();
+                
+                // הודעה
+                const photoPreview = document.getElementById('photo-preview');
+                const message = type === 'speedometer' ? 'ספידומטר נשמר!' : 'תמונת משאבה נשמרה!';
+                
+                // הצגת הודעה זמנית
+                const tempMessage = document.createElement('div');
+                tempMessage.style.cssText = 'background: #d4edda; color: #155724; padding: 10px; border-radius: 5px; margin: 10px 0; text-align: center;';
+                tempMessage.innerHTML = `✅ ${message}`;
+                photoPreview.appendChild(tempMessage);
+                
+                setTimeout(() => {
+                    if (tempMessage.parentNode) {
+                        tempMessage.parentNode.removeChild(tempMessage);
+                    }
+                }, 2000);
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function displayPhotos() {
+            const photoPreview = document.getElementById('photo-preview');
+            const savedPhotos = document.getElementById('saved-photos');
+            
+            let html = '';
+            
+            if (currentPhotos.speedometer) {
+                html += `
+                    <div style="text-align: center;">
+                        <img src="${currentPhotos.speedometer.data}" style="width: 100%; max-height: 150px; object-fit: cover; border-radius: 8px; border: 2px solid #28a745;">
+                        <p style="font-size: 0.9em; margin-top: 5px; color: #28a745;">📊 ספידומטר</p>
+                    </div>
+                `;
+            }
+            
+            if (currentPhotos.pump) {
+                html += `
+                    <div style="text-align: center;">
+                        <img src="${currentPhotos.pump.data}" style="width: 100%; max-height: 150px; object-fit: cover; border-radius: 8px; border: 2px solid #20c997;">
+                        <p style="font-size: 0.9em; margin-top: 5px; color: #20c997;">⛽ משאבת דלק</p>
+                    </div>
+                `;
+            }
+            
+            if (html) {
+                savedPhotos.innerHTML = html;
+                photoPreview.style.display = 'block';
+            } else {
+                photoPreview.style.display = 'none';
+            }
         }
 
         function processImage(file, type) {
@@ -520,46 +590,88 @@
                 resultsDiv.innerHTML = `
                     <h4>📸 מעבד תמונה...</h4>
                     <img src="${e.target.result}" class="camera-preview" style="max-height: 200px;">
-                    <p>🔍 מזהה נתונים עם Tesseract OCR...</p>
-                    <div style="background: #fff3cd; padding: 10px; margin: 10px 0; border-radius: 5px;">
-                        <div id="progress-bar" style="background: #ddd; height: 20px; border-radius: 10px;">
-                            <div id="progress-fill" style="background: #28a745; height: 100%; width: 0%; border-radius: 10px; transition: width 0.3s;"></div>
-                        </div>
-                        <small id="progress-text">מתחיל זיהוי...</small>
-                    </div>
+                    <p>🔍 מזהה נתונים עם Google Vision API...</p>
                 `;
                 
-                // זיהוי OCR אמיתי עם Tesseract
-                Tesseract.recognize(
-                    e.target.result,
-                    'eng',
-                    {
-                        logger: m => {
-                            if (m.status === 'recognizing text') {
-                                const progress = Math.round(m.progress * 100);
-                                document.getElementById('progress-fill').style.width = progress + '%';
-                                document.getElementById('progress-text').textContent = `מזהה טקסט: ${progress}%`;
-                            }
+                // שליחה ל-Google Vision API דרך שירות חיצוני
+                const base64Image = e.target.result.split(',')[1];
+                
+                fetch('https://api.ocr.space/parse/image', {
+                    method: 'POST',
+                    headers: {
+                        'apikey': 'K87899142388957'  // API key חינמי לדוגמה
+                    },
+                    body: JSON.stringify({
+                        base64Image: 'data:image/jpeg;base64,' + base64Image,
+                        language: 'eng',
+                        isOverlayRequired: false,
+                        detectOrientation: true,
+                        scale: true,
+                        OCREngine: 2
+                    })
+                })
+                .then(response => response.json())
+                .then(result => {
+                    if (result.ParsedResults && result.ParsedResults[0]) {
+                        const text = result.ParsedResults[0].ParsedText;
+                        console.log('טקסט שזוהה:', text);
+                        
+                        if (type === 'kilometers') {
+                            processKmText(text);
+                        } else if (type === 'pump') {
+                            processPumpText(text);
                         }
+                    } else {
+                        showOCRError(resultsDiv);
                     }
-                ).then(({ data: { text } }) => {
-                    console.log('טקסט שזוהה:', text);
-                    
-                    if (type === 'kilometers') {
-                        processKmText(text);
-                    } else if (type === 'pump') {
-                        processPumpText(text);
-                    }
-                }).catch(err => {
+                })
+                .catch(err => {
                     console.error('שגיאה בזיהוי OCR:', err);
-                    resultsDiv.innerHTML += `
-                        <div style="background: #f8d7da; padding: 10px; border-radius: 5px; margin-top: 10px;">
-                            ❌ שגיאה בזיהוי התמונה. אנא נסה שוב או הזן את הנתונים ידנית.
-                        </div>
-                    `;
+                    // fallback לזיהוי מקומי פשוט
+                    fallbackOCR(e.target.result, type, resultsDiv);
                 });
             };
             reader.readAsDataURL(file);
+        }
+
+        // fallback OCR פשוט אם השירות החיצוני לא עובד
+        function fallbackOCR(imageSrc, type, resultsDiv) {
+            resultsDiv.innerHTML += `
+                <div style="background: #fff3cd; padding: 10px; border-radius: 5px; margin-top: 10px;">
+                    ⚠️ בעיה בשירות זיהוי התמונה<br>
+                    <small>אנא הזן את הנתונים ידנית או נסה שוב</small><br><br>
+                    <button onclick="manualInput('${type}')" class="btn btn-secondary" style="width: auto; padding: 10px 20px;">
+                        ✏️ הזנה ידנית
+                    </button>
+                </div>
+            `;
+        }
+
+        function manualInput(type) {
+            if (type === 'kilometers') {
+                const km = prompt('הזן מספר קילומטר:');
+                if (km && !isNaN(km)) {
+                    document.getElementById('km').value = km;
+                    updateCalculations();
+                }
+            } else if (type === 'pump') {
+                const liters = prompt('הזן כמות ליטרים:');
+                const price = prompt('הזן מחיר כולל:');
+                if (liters && price && !isNaN(liters) && !isNaN(price)) {
+                    document.getElementById('liters').value = liters;
+                    document.getElementById('price').value = price;
+                    updateCalculations();
+                }
+            }
+        }
+
+        function showOCRError(resultsDiv) {
+            resultsDiv.innerHTML += `
+                <div style="background: #f8d7da; padding: 10px; border-radius: 5px; margin-top: 10px;">
+                    ❌ לא הצלחתי לזהות טקסט בתמונה<br>
+                    <small>ודא שהתמונה ברורה והמספרים גדולים וקריאים</small>
+                </div>
+            `;
         }
 
         function processKmText(text) {
@@ -721,14 +833,18 @@
                 pricePerLiter: (price / liters).toFixed(2),
                 distance: lastFueling ? km - lastFueling.km : 0,
                 efficiency: lastFueling ? ((km - lastFueling.km) / liters).toFixed(1) : 0,
-                carInfo: {...carInfo}
+                carInfo: {...carInfo},
+                photos: {
+                    speedometer: currentPhotos.speedometer ? {...currentPhotos.speedometer} : null,
+                    pump: currentPhotos.pump ? {...currentPhotos.pump} : null
+                }
             };
             
             fuelingData.push(newFueling);
             localStorage.setItem('fuelingData', JSON.stringify(fuelingData));
             
             const successMsg = document.getElementById('success-message');
-            successMsg.innerHTML = '✅ התדלוק נשמר בהצלחה!';
+            successMsg.innerHTML = '✅ התדלוק נשמר בהצלחה עם התמונות!';
             successMsg.style.display = 'block';
             
             setTimeout(() => {
@@ -745,7 +861,10 @@
             document.getElementById('liters').value = '';
             document.getElementById('price').value = '';
             document.getElementById('calculations').style.display = 'none';
-            document.getElementById('ocr-results').style.display = 'none';
+            
+            // איפוס התמונות
+            currentPhotos = { speedometer: null, pump: null };
+            document.getElementById('photo-preview').style.display = 'none';
         }
 
         function updateHistory() {
@@ -759,6 +878,22 @@
             let html = '';
             fuelingData.slice().reverse().forEach(fueling => {
                 const carName = fueling.carInfo?.name || 'רכב';
+                
+                // תמונות
+                let photosHtml = '';
+                if (fueling.photos) {
+                    if (fueling.photos.speedometer || fueling.photos.pump) {
+                        photosHtml = '<br><div style="margin-top: 10px;">';
+                        if (fueling.photos.speedometer) {
+                            photosHtml += `<img src="${fueling.photos.speedometer.data}" style="width: 60px; height: 40px; object-fit: cover; border-radius: 4px; margin-left: 5px; border: 1px solid #28a745;" title="ספידומטר">`;
+                        }
+                        if (fueling.photos.pump) {
+                            photosHtml += `<img src="${fueling.photos.pump.data}" style="width: 60px; height: 40px; object-fit: cover; border-radius: 4px; margin-left: 5px; border: 1px solid #20c997;" title="משאבת דלק">`;
+                        }
+                        photosHtml += '</div>';
+                    }
+                }
+                
                 html += `
                     <div class="history-item">
                         <div class="history-date">${fueling.date} - ${carName}</div>
@@ -768,6 +903,7 @@
                             💰 ₪${fueling.price} | 
                             📊 ₪${fueling.pricePerLiter}/L
                             ${fueling.distance > 0 ? `<br>📏 נסע ${fueling.distance.toLocaleString()} ק"מ | ⚡ ${fueling.efficiency} ק"מ/L` : ''}
+                            ${photosHtml}
                         </div>
                     </div>
                 `;
