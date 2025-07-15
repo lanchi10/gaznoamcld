@@ -426,6 +426,9 @@
         </div>
     </div>
 
+    <!-- ספריית Tesseract.js לזיהוי OCR אמיתי -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
+    
     <script>
         let fuelingData = JSON.parse(localStorage.getItem('fuelingData')) || [];
         let carInfo = JSON.parse(localStorage.getItem('carInfo')) || {};
@@ -513,54 +516,153 @@
                 const resultsDiv = document.getElementById('ocr-results');
                 resultsDiv.style.display = 'block';
                 
+                // הצגת התמונה
                 resultsDiv.innerHTML = `
-                    <h4>📸 תמונה עובדה</h4>
+                    <h4>📸 מעבד תמונה...</h4>
                     <img src="${e.target.result}" class="camera-preview" style="max-height: 200px;">
-                    <p>🔍 מזהה נתונים...</p>
+                    <p>🔍 מזהה נתונים עם Tesseract OCR...</p>
+                    <div style="background: #fff3cd; padding: 10px; margin: 10px 0; border-radius: 5px;">
+                        <div id="progress-bar" style="background: #ddd; height: 20px; border-radius: 10px;">
+                            <div id="progress-fill" style="background: #28a745; height: 100%; width: 0%; border-radius: 10px; transition: width 0.3s;"></div>
+                        </div>
+                        <small id="progress-text">מתחיל זיהוי...</small>
+                    </div>
                 `;
                 
-                setTimeout(() => {
-                    if (type === 'kilometers') {
-                        simulateKmOCR();
-                    } else if (type === 'pump') {
-                        simulatePumpOCR();
+                // זיהוי OCR אמיתי עם Tesseract
+                Tesseract.recognize(
+                    e.target.result,
+                    'eng',
+                    {
+                        logger: m => {
+                            if (m.status === 'recognizing text') {
+                                const progress = Math.round(m.progress * 100);
+                                document.getElementById('progress-fill').style.width = progress + '%';
+                                document.getElementById('progress-text').textContent = `מזהה טקסט: ${progress}%`;
+                            }
+                        }
                     }
-                }, 2000);
+                ).then(({ data: { text } }) => {
+                    console.log('טקסט שזוהה:', text);
+                    
+                    if (type === 'kilometers') {
+                        processKmText(text);
+                    } else if (type === 'pump') {
+                        processPumpText(text);
+                    }
+                }).catch(err => {
+                    console.error('שגיאה בזיהוי OCR:', err);
+                    resultsDiv.innerHTML += `
+                        <div style="background: #f8d7da; padding: 10px; border-radius: 5px; margin-top: 10px;">
+                            ❌ שגיאה בזיהוי התמונה. אנא נסה שוב או הזן את הנתונים ידנית.
+                        </div>
+                    `;
+                });
             };
             reader.readAsDataURL(file);
         }
 
-        function simulateKmOCR() {
-            const randomKm = Math.floor(Math.random() * 50000) + 50000;
-            document.getElementById('km').value = randomKm;
+        function processKmText(text) {
+            // חיפוש מספרי ק"מ - בדרך כלל 5-6 ספרות
+            const kmPatterns = [
+                /(\d{4,6})/g,  // 4-6 ספרות
+                /(\d+\.?\d*)\s*km/gi,  // מספר עם km
+                /(\d+\.?\d*)\s*קמ/g   // מספר עם קמ
+            ];
+            
+            let foundKm = null;
+            
+            for (let pattern of kmPatterns) {
+                const matches = text.match(pattern);
+                if (matches) {
+                    for (let match of matches) {
+                        const num = parseFloat(match.replace(/[^\d\.]/g, ''));
+                        // בדיקה שהמספר הגיוני לק"מ (בין 1000 ל-999999)
+                        if (num >= 1000 && num <= 999999) {
+                            foundKm = Math.floor(num);  // ק"מ תמיד מספר שלם
+                            break;
+                        }
+                    }
+                    if (foundKm) break;
+                }
+            }
             
             const resultsDiv = document.getElementById('ocr-results');
-            resultsDiv.innerHTML += `
-                <div style="background: #d4edda; padding: 10px; border-radius: 5px; margin-top: 10px;">
-                    ✅ זוהה קילומטר: ${randomKm.toLocaleString()}
-                    <br><small>הנתון הוכנס אוטומטי לשדה הק"מ</small>
-                </div>
-            `;
-            updateCalculations();
+            
+            if (foundKm) {
+                document.getElementById('km').value = foundKm;
+                resultsDiv.innerHTML += `
+                    <div style="background: #d4edda; padding: 10px; border-radius: 5px; margin-top: 10px;">
+                        ✅ זוהה קילומטר: ${foundKm.toLocaleString()}
+                        <br><small>הנתון הוכנס אוטומטי לשדה הק"מ</small>
+                    </div>
+                `;
+                updateCalculations();
+            } else {
+                resultsDiv.innerHTML += `
+                    <div style="background: #fff3cd; padding: 10px; border-radius: 5px; margin-top: 10px;">
+                        ⚠️ לא זוהה מספר ק"מ תקין
+                        <br><small>טקסט שזוהה: "${text.substring(0, 100)}..."</small>
+                        <br><small>אנא הזן את הק"מ ידנית</small>
+                    </div>
+                `;
+            }
         }
 
-        function simulatePumpOCR() {
-            const randomLiters = (Math.random() * 40 + 20).toFixed(2);
-            const randomPrice = (randomLiters * (Math.random() * 2 + 6)).toFixed(2);
+        function processPumpText(text) {
+            // חיפוש מספרים בטקסט - בדרך כלל יש 2 מספרים עיקריים במשאבה
+            const numbers = [];
+            const numberPattern = /(\d+\.?\d*)/g;
+            let match;
             
-            document.getElementById('liters').value = randomLiters;
-            document.getElementById('price').value = randomPrice;
+            while ((match = numberPattern.exec(text)) !== null) {
+                const num = parseFloat(match[1]);
+                // מספרים רלוונטיים לתדלוק
+                if (num > 0.1 && num < 10000) {
+                    numbers.push(num);
+                }
+            }
+            
+            // מיון המספרים
+            numbers.sort((a, b) => b - a);
             
             const resultsDiv = document.getElementById('ocr-results');
+            
+            if (numbers.length >= 2) {
+                const price = numbers[0];    // המספר הגבוה יותר = מחיר
+                const liters = numbers[1];   // המספר הנמוך יותר = ליטרים
+                
+                // בדיקת הגיון
+                if (price > liters && liters > 5 && liters < 200 && price > 50 && price < 2000) {
+                    document.getElementById('liters').value = liters.toFixed(2);
+                    document.getElementById('price').value = price.toFixed(2);
+                    
+                    resultsDiv.innerHTML += `
+                        <div style="background: #d4edda; padding: 10px; border-radius: 5px; margin-top: 10px;">
+                            ✅ זוהה מסך משאבת דלק:<br>
+                            • סה"כ ליטרים: ${liters.toFixed(2)}<br>
+                            • סה"כ תשלום: ₪${price.toFixed(2)}<br>
+                            <small>המספר הגבוה = מחיר, המספר הנמוך = ליטרים</small>
+                        </div>
+                    `;
+                    updateCalculations();
+                } else {
+                    showPumpError(numbers, text, resultsDiv);
+                }
+            } else {
+                showPumpError(numbers, text, resultsDiv);
+            }
+        }
+
+        function showPumpError(numbers, text, resultsDiv) {
             resultsDiv.innerHTML += `
-                <div style="background: #d4edda; padding: 10px; border-radius: 5px; margin-top: 10px;">
-                    ✅ זוהה מסך משאבת דלק:<br>
-                    • סה"כ ליטרים: ${randomLiters}<br>
-                    • סה"כ תשלום: ₪${randomPrice}<br>
-                    <small>הנתונים הוכנסו אוטומטי מהמשאבה</small>
+                <div style="background: #fff3cd; padding: 10px; border-radius: 5px; margin-top: 10px;">
+                    ⚠️ לא זוהו נתוני תדלוק תקינים<br>
+                    <small>מספרים שנמצאו: ${numbers.join(', ')}</small><br>
+                    <small>טקסט: "${text.substring(0, 100)}..."</small><br>
+                    <small>אנא הזן את הנתונים ידנית</small>
                 </div>
             `;
-            updateCalculations();
         }
 
         function updateCalculations() {
